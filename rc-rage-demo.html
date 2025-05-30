@@ -4,11 +4,13 @@
 <head>
   <meta charset='UTF-8'>
   <meta name="robots" content="noindex">
-  <title>Retaliate or Carry-on: Reactive Aggression Experiment</title>
+  <title>Retaliate or Carry-on: Reactive AGression Experiment</title>
   <link rel='stylesheet' type='text/css' href='lib/rc-rage.css'>
 
+  <!-- Step 1. Define and load required resources -->
   <script src='https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js'></script>
   <script src='lib/jspsych-6.1.0/jspsych.js'></script>
+  <script src='lib/jspsych-6.1.0/plugins/jspsych-fullscreen.js'></script>
   <script src='lib/jspsych-6.1.0/plugins/jspsych-instructions.js'></script>
   <script src='lib/jspsych-6.1.0/plugins/jspsych-html-keyboard-response.js'></script>
   <script src='lib/jspsych-audio-keyboard-with-replay.js'></script>
@@ -17,6 +19,11 @@
 </head>
 
 <body>
+
+  <!-- Step 2: Add `display_stage` CSS, DIV, and extra scripts for Qualtrics -->
+  <!-- COPY PASTE TO QUALTRICS FROM HERE -->
+  <link href="https://raw.githubusercontent.com/david-gallardo/RC-RAGE_jsPsych/master/lib/rc-rage.css" rel="stylesheet" type="text/css">
+  </link>
   <div>
     <span style="font-size: 24px;">
       <br><br>
@@ -36,7 +43,7 @@
     }
 
     #display_stage {
-      position: relative;
+      position: fixed;
       left: 1vw;
       top: 1vh;
       height: 98vh;
@@ -49,6 +56,7 @@
       overflow-x: hidden;
     }
   </style>
+  <!-- COPY PASTE TO QUALTRICS UP TO HERE -->
 
   <div id='display_stage_background'></div>
   <div id='display_stage'></div>
@@ -56,11 +64,18 @@
 </body>
 
 <script>
-  /* Adaptat sense fullscreen */
+  /* Step 3: Define the experiment flow */
+  // NOTE that the functions used below are defined in `rc-rage_main.js` for readability
   var instr_url = 'instruction/';
   var instr_imglist = get_instruction_imglist(instr_url, 30);
 
   var jspsych_session = [];
+
+  // use the full screen
+  jspsych_session.push({
+    type: 'fullscreen',
+    fullscreen_mode: true
+  });
 
   jspsych_session.push({
     timeline: generate_instruction_block(instr_imglist)
@@ -74,35 +89,75 @@
     timeline: generate_main_block()
   });
 
+  /* Step 4: Show the aggregate session-level data */
+  // NOTE that main_score, main_seq, click_history, wasted_click_history are defined in rc-rage_main.js
+  // The below lines take advantage of these rather than going through the raw data
   jspsych_session.push({
     type: "html-keyboard-response",
     stimulus: function () {
+
+      // performance-based bonus in dollar (in string)
       let bonus = (main_score / 100).toFixed(2);
-      let trial_seq = main_seq.map(item => (item > 1000 ? -1 : item)).toString().replace(/,/g, ';');
-      let click_cnt = click_history.reduce((a, b) => a + b).toString();
+
+      // the trial sequence (specifies when the robber appears)
+      let trial_seq = main_seq;
+      trial_seq.forEach(function (item, ii) {
+        if (item > 1000) trial_seq[ii] = -1; // robber did not appear
+      });
+      trial_seq = trial_seq.toString().replace(/,/g, ';');
+
+      // participants' click counts for each trial
+      let click_cnt = click_history.reduce(function (a, b) {
+        return (a + b);
+      }).toString();
+
+      // completed trials (within the time limit)
       var comp_trial_cnt = wasted_click_history.filter(x => x >= 0).length;
+
+      // the number of trials, in which the robber appeared
       var provoked_cnt = main_seq.slice(0, comp_trial_cnt).filter(x => x > 0).length;
+
+      // the number of trials, in which the robber was killed by retailation
       var kill_cnt = wasted_click_history.filter(x => x > 0).length;
 
       return "<div class = centerbox><p><p>" +
         "<p class = block-text>Your performance-based bonus: $" + bonus + "</p>" +
-        "<p class = block-text>Number of completed trials: " + comp_trial_cnt + " out of " + main_seq.length + "</p>" +
+        "<p class = block-text>Number of completed trials: " + comp_trial_cnt + " out of " + main_seq.length
+        .toString() + "</p>" +
         "<p class = block-text>Number of provocations: " + provoked_cnt + "</p>" +
         "<p class = block-text>Number of retaliations: " + kill_cnt + "</p>" +
         "<p class = block-text>Press any key to complete the experiment. Thank you!</p></div>";
     }
   });
 
+  // exit the full screen
+  jspsych_session.push({
+    type: 'fullscreen',
+    fullscreen_mode: false
+  });
+
+  /* Step 5: Run the experiment. */
   jsPsych.init({
+
     display_element: 'display_stage',
     timeline: jspsych_session,
     preload_images: instr_imglist,
+
+    exclusions: { // browser window needs to have these dimensions, if not, participants get the chance to maximize their window, if they don't support this resolution when maximized they can't particiate.
+      min_width: 1000,
+      min_height: 700
+    },
+
     on_finish: function () {
+      // csv-like string: delimiter - space (' '), newline - semicolon (';')
+      // result_string contains: 'trial image11 image12 click rt;'
       console.log(result_string);
+
+      // Also display in the result page as well
       var display_element = jsPsych.getDisplayElement();
       display_element.innerHTML =
         "Results will be stored as a single string variable with a csv-like formatting<br>" +
-        "so that it can easily be saved into Qualtrics Embedded Data.<p>" +
+        "so that it can easily saved into Qualtrics Embedded Data.<p>" +
         "delimiter - space (' '), newline - semicolon (';')<p>" +
         "<b>Result string ==></b> " + result_string;
     }
